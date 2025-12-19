@@ -1,0 +1,4 @@
+name: CrazyCombat
+version: 1.0
+main: com.warjorn.club.CrazyCombat
+api-version: 1.21

@@ -1,0 +1,21 @@
+# CrazyCombat plugin configuration
+# Maximum number of kills by the same attacker before mutual protection triggers
+max_kills: 3
+
+# Cooldown in milliseconds for mutual protection after kill threshold
+cooldown_ms: 300000  # 5 minutes
+
+# Sweeping attack settings
+sweeping:
+  enabled: true
+  radius: 1.5
+  damage_multiplier: 0.5
+  particle: SWEEP_ATTACK
+
+# Encumbrance values
+encumbrance:
+  leather: 0.01
+  chainmail: 0.05
+  iron: 0.05
+  diamond: 0.08
+  shield: 0.03

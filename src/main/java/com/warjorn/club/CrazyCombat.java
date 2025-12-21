@@ -1,3 +1,62 @@
+import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.scheduler.BukkitRunnable;
+    @EventHandler
+    public void onPlayerDeath(PlayerDeathEvent event) {
+        Player victim = event.getEntity();
+        Player killer = victim.getKiller();
+        if (killer == null || killer.equals(victim)) return;
+
+        UUID victimId = victim.getUniqueId();
+        UUID killerId = killer.getUniqueId();
+
+        killCounts.putIfAbsent(victimId, new HashMap<>());
+        Map<UUID, Integer> victimMap = killCounts.get(victimId);
+        int count = victimMap.getOrDefault(killerId, 0) + 1;
+        victimMap.put(killerId, count);
+
+        if (count >= maxKills) {
+            String pairKey = getPairKey(victimId, killerId);
+            mutualCooldowns.put(pairKey, System.currentTimeMillis() + cooldownMillis);
+
+            killer.sendMessage("You can no longer attack " + victim.getName() + " for a while!");
+            victim.sendMessage("You can no longer attack " + killer.getName() + " for a while!");
+
+            // Optionally, schedule cleanup
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    mutualCooldowns.remove(pairKey);
+                    // Reset kill counts for this pair
+                    killCounts.getOrDefault(victimId, new HashMap<>()).remove(killerId);
+                    killCounts.getOrDefault(killerId, new HashMap<>()).remove(victimId);
+                }
+            }.runTaskLater(this, cooldownMillis / 50); // 20 ticks = 1 sec
+        }
+    }
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.EventPriority;
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof Player) || !(event.getDamager() instanceof Player)) return;
+        Player victim = (Player) event.getEntity();
+        Player attacker = (Player) event.getDamager();
+
+        UUID victimId = victim.getUniqueId();
+        UUID attackerId = attacker.getUniqueId();
+
+        String pairKey = getPairKey(victimId, attackerId);
+        Long until = mutualCooldowns.get(pairKey);
+        if (until != null && until > System.currentTimeMillis()) {
+            event.setCancelled(true);
+            attacker.sendMessage("You cannot attack " + victim.getName() + " right now!");
+            victim.sendMessage("You cannot attack " + attacker.getName() + " right now!");
+        }
+    }
+
+    private String getPairKey(UUID a, UUID b) {
+        // Ensure mutual: order doesn't matter
+        return a.compareTo(b) < 0 ? a + ":" + b : b + ":" + a;
+    }
 package com.warjorn.club;
 
 import org.bukkit.Material;
@@ -22,14 +81,49 @@ import org.bukkit.World;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.UUID;
+import java.util.HashMap;
+import java.util.Map;
 
 public class CrazyCombat extends JavaPlugin implements Listener {
 
     private static final String MODIFIER_NAMESPACE = "crazycombat";
 
+    // Track kills: Map<victim, Map<attacker, count>>
+    private final Map<UUID, Map<UUID, Integer>> killCounts = new HashMap<>();
+    // Track mutual cooldowns: Map<UUID_pair_string, cooldown_end_time>
+    private final Map<String, Long> mutualCooldowns = new HashMap<>();
+
+    private int maxKills = 3; // default
+    private long cooldownMillis = 5 * 60 * 1000; // 5 minutes default
+
+    // Configurable sweeping attack
+    private boolean sweepingEnabled = true;
+    private double sweepingRadius = 1.5;
+    private double sweepingDamageMultiplier = 0.5;
+    private String sweepingParticle = "SWEEP_ATTACK";
+
+    // Configurable encumbrance
+    private double encumbranceLeather = 0.01;
+    private double encumbranceChainmail = 0.05;
+    private double encumbranceIron = 0.05;
+    private double encumbranceDiamond = 0.08;
+    private double encumbranceShield = 0.03;
+
     @Override
     public void onEnable() {
         getServer().getPluginManager().registerEvents(this, this);
+        saveDefaultConfig();
+        maxKills = getConfig().getInt("max_kills", 3);
+        cooldownMillis = getConfig().getLong("cooldown_ms", 5 * 60 * 1000);
+        sweepingEnabled = getConfig().getBoolean("sweeping.enabled", true);
+        sweepingRadius = getConfig().getDouble("sweeping.radius", 1.5);
+        sweepingDamageMultiplier = getConfig().getDouble("sweeping.damage_multiplier", 0.5);
+        sweepingParticle = getConfig().getString("sweeping.particle", "SWEEP_ATTACK");
+        encumbranceLeather = getConfig().getDouble("encumbrance.leather", 0.01);
+        encumbranceChainmail = getConfig().getDouble("encumbrance.chainmail", 0.05);
+        encumbranceIron = getConfig().getDouble("encumbrance.iron", 0.05);
+        encumbranceDiamond = getConfig().getDouble("encumbrance.diamond", 0.08);
+        encumbranceShield = getConfig().getDouble("encumbrance.shield", 0.03);
         getLogger().info("CrazyCombat enabled!");
     }
 
@@ -88,13 +182,13 @@ public class CrazyCombat extends JavaPlugin implements Listener {
             if (item != null) {
                 Material mat = item.getType();
                 if (mat.name().contains("LEATHER")) {
-                    totalSlowdown += 0.01; // Minimal slowdown
+                    totalSlowdown += encumbranceLeather;
                 } else if (mat.name().contains("CHAINMAIL")) {
-                    totalSlowdown += 0.05; // Considerable
+                    totalSlowdown += encumbranceChainmail;
                 } else if (mat.name().contains("IRON")) {
-                    totalSlowdown += 0.05; // Considerable
+                    totalSlowdown += encumbranceIron;
                 } else if (mat.name().contains("DIAMOND")) {
-                    totalSlowdown += 0.08; // Full slowdown
+                    totalSlowdown += encumbranceDiamond;
                 }
             }
         }
@@ -102,7 +196,7 @@ public class CrazyCombat extends JavaPlugin implements Listener {
         // Check for shield in off-hand
         ItemStack offHand = inv.getItemInOffHand();
         if (offHand != null && offHand.getType() == Material.SHIELD) {
-            totalSlowdown += 0.03; // Moderate slowdown for shield
+            totalSlowdown += encumbranceShield;
         }
 
         if (totalSlowdown > 0) {
@@ -112,15 +206,21 @@ public class CrazyCombat extends JavaPlugin implements Listener {
     }
 
     private void performSweepingAttack(Player player, ItemStack sword) {
-        double damage = getSwordDamage(sword) * 0.5;
+        if (!sweepingEnabled) return;
+        double damage = getSwordDamage(sword) * sweepingDamageMultiplier;
         Location loc = player.getLocation();
         World world = player.getWorld();
-        for (Entity entity : player.getNearbyEntities(1.5, 1.5, 1.5)) {
+        for (Entity entity : player.getNearbyEntities(sweepingRadius, sweepingRadius, sweepingRadius)) {
             if (entity instanceof LivingEntity && entity != player) {
                 ((LivingEntity) entity).damage(damage, player);
             }
         }
-        world.spawnParticle(Particle.SWEEP_ATTACK, loc, 1);
+        try {
+            Particle particle = Particle.valueOf(sweepingParticle);
+            world.spawnParticle(particle, loc, 1);
+        } catch (IllegalArgumentException e) {
+            world.spawnParticle(Particle.SWEEP_ATTACK, loc, 1); // fallback
+        }
     }
 
     private double getSwordDamage(ItemStack item) {

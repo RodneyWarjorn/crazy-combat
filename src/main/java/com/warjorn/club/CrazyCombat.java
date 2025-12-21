@@ -46,8 +46,8 @@ public class CrazyCombat extends JavaPlugin implements Listener {
         if (event.getWhoClicked() instanceof Player) {
             Player player = (Player) event.getWhoClicked();
             int slot = event.getSlot();
-            // Armor slots: 36 boots, 37 leggings, 38 chest, 39 helmet
-            if (slot >= 36 && slot <= 39) {
+            // Armor slots: 36 boots, 37 leggings, 38 chest, 39 helmet, 40 off-hand
+            if ((slot >= 36 && slot <= 39) || slot == 40) {
                 // Schedule update after the event
                 getServer().getScheduler().runTask(this, () -> updateSpeed(player));
             }
@@ -81,8 +81,14 @@ public class CrazyCombat extends JavaPlugin implements Listener {
             }
         }
 
+        // Check for shield in off-hand
+        ItemStack offHand = inv.getItemInOffHand();
+        if (offHand != null && offHand.getType() == Material.SHIELD) {
+            totalSlowdown += 0.03; // Moderate slowdown for shield
+        }
+
         if (totalSlowdown > 0) {
-            AttributeModifier mod = new AttributeModifier(MODIFIER_NAMESPACE, -totalSlowdown, AttributeModifier.Operation.ADD_NUMBER);
+            AttributeModifier mod = new AttributeModifier(UUID.nameUUIDFromBytes(MODIFIER_NAMESPACE.getBytes()), MODIFIER_NAMESPACE, -totalSlowdown, AttributeModifier.Operation.ADD_NUMBER);
             attr.addModifier(mod);
         }
     }

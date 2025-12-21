@@ -1,17 +1,24 @@
 package com.warjorn.club;
 
 import org.bukkit.Material;
+import org.bukkit.Particle;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.attribute.AttributeModifier;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.player.PlayerAnimationEvent;
+import org.bukkit.event.player.PlayerAnimationType;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.UUID;
@@ -54,6 +61,17 @@ public class CrazyCombat extends JavaPlugin implements Listener {
         }
     }
 
+    @EventHandler
+    public void onPlayerAnimation(PlayerAnimationEvent event) {
+        if (event.getAnimationType() == PlayerAnimationType.ARM_SWING) {
+            Player player = event.getPlayer();
+            ItemStack item = player.getInventory().getItemInMainHand();
+            if (item != null && item.getType().name().endsWith("_SWORD")) {
+                performSweepingAttack(player, item);
+            }
+        }
+    }
+
     private void updateSpeed(Player player) {
         AttributeInstance attr = player.getAttribute(Attribute.MOVEMENT_SPEED);
         if (attr == null) return;
@@ -90,6 +108,30 @@ public class CrazyCombat extends JavaPlugin implements Listener {
         if (totalSlowdown > 0) {
             AttributeModifier mod = new AttributeModifier(UUID.nameUUIDFromBytes(MODIFIER_NAMESPACE.getBytes()), MODIFIER_NAMESPACE, -totalSlowdown, AttributeModifier.Operation.ADD_NUMBER);
             attr.addModifier(mod);
+        }
+    }
+
+    private void performSweepingAttack(Player player, ItemStack sword) {
+        double damage = getSwordDamage(sword) * 0.5;
+        Location loc = player.getLocation();
+        World world = player.getWorld();
+        for (Entity entity : player.getNearbyEntities(1.5, 1.5, 1.5)) {
+            if (entity instanceof LivingEntity && entity != player) {
+                ((LivingEntity) entity).damage(damage, player);
+            }
+        }
+        world.spawnParticle(Particle.SWEEP_ATTACK, loc, 1);
+    }
+
+    private double getSwordDamage(ItemStack item) {
+        switch (item.getType()) {
+            case WOODEN_SWORD: return 4.0;
+            case STONE_SWORD: return 5.0;
+            case IRON_SWORD: return 6.0;
+            case DIAMOND_SWORD: return 7.0;
+            case NETHERITE_SWORD: return 8.0;
+            case GOLDEN_SWORD: return 4.0;
+            default: return 1.0;
         }
     }
 }

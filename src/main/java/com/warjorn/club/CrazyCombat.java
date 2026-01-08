@@ -93,7 +93,7 @@ public class CrazyCombat extends JavaPlugin implements Listener {
     // Track mutual cooldowns: Map<UUID_pair_string, cooldown_end_time>
     private final Map<String, Long> mutualCooldowns = new HashMap<>();
 
-    private int maxKills = 3; // default
+    private int maxKills = 2; // default
     private long cooldownMillis = 5 * 60 * 1000; // 5 minutes default
 
     // Configurable sweeping attack
